@@ -6,38 +6,42 @@ const fs = require('fs');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// डॉक्यूमेंट सेव करने के लिए uploads फोल्डर बनाएं
+// uploads डायरेक्टरी सुनिश्चित करें
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir);
+    fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-// स्टोरेज कॉन्फ़िगरेशन (फाइल का नाम यूनिक रखने के लिए टाइमस्टैम्प जोड़ा गया है)
+// स्टोरेज सेटिंग्स
 const storage = multer.diskStorage({
-    destination: (req, file, cb) => cb(null, 'uploads/'),
+    destination: (req, file, cb) => cb(null, uploadDir),
     filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
 });
 
 const upload = multer({ storage });
 
-// स्टैटिक फाइलों के लिए
-app.use(express.static('public'));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// मिडिलवेयर
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, 'public')));
+app.use('/uploads', express.static(uploadDir));
 
-// 1. फोन से फाइल अपलोड करने का रूट
+// अपलोड रूट
 app.post('/upload', upload.single('document'), (req, res) => {
-    if (!req.file) return res.status(400).send('कोई फाइल सेलेक्ट नहीं की गई!');
+    if (!req.file) {
+        return res.status(400).send('कोई फ़ाइल अपलोड नहीं हुई।');
+    }
     res.redirect('/');
 });
 
-// 2. अपलोड की गई सभी फाइलों की लिस्ट भेजने का रूट
+// फ़ाइलों की लिस्ट प्राप्त करने का रूट
 app.get('/api/files', (req, res) => {
     fs.readdir(uploadDir, (err, files) => {
-        if (err) return res.status(500).json([]);
+        if (err) return res.json([]);
         res.json(files);
     });
 });
 
 app.listen(PORT, () => {
-    console.log(`सर्वर इस पोर्ट पर चालू है: ${PORT}`);
+    console.log(`Server is running on port ${PORT}`);
 });
