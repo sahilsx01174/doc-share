@@ -1,40 +1,43 @@
 const express = require('express');
-const multer = require('multer');
+const fileUpload = require('express-fileupload');
 const path = require('path');
 const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// uploads डायरेक्टरी सुनिश्चित करें
-const uploadDir = path.join(__dirname, 'uploads');
+// Temporary folder for uploads
+const uploadDir = path.join('/tmp', 'uploads');
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-// स्टोरेज सेटिंग्स
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => cb(null, uploadDir),
-    filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
-});
-
-const upload = multer({ storage });
-
-// मिडिलवेयर
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(uploadDir));
+app.use(fileUpload({ createParentPath: true }));
 
-// अपलोड रूट
-app.post('/upload', upload.single('document'), (req, res) => {
-    if (!req.file) {
-        return res.status(400).send('कोई फ़ाइल अपलोड नहीं हुई।');
-    }
-    res.redirect('/');
+// GET / - UI serve
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// फ़ाइलों की लिस्ट प्राप्त करने का रूट
+// POST /upload - File handle
+app.post('/upload', (req, res) => {
+    if (!req.files || !req.files.document) {
+        return res.status(400).json({ error: 'Koi file nahi chuni gayi' });
+    }
+
+    const sampleFile = req.files.document;
+    const fileName = Date.now() + '-' + sampleFile.name;
+    const savePath = path.join(uploadDir, fileName);
+
+    sampleFile.mv(savePath, (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true, fileName });
+    });
+});
+
+// GET /api/files - List files
 app.get('/api/files', (req, res) => {
     fs.readdir(uploadDir, (err, files) => {
         if (err) return res.json([]);
@@ -42,6 +45,4 @@ app.get('/api/files', (req, res) => {
     });
 });
 
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server live on ${PORT}`));

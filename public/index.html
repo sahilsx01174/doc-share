@@ -3,61 +3,55 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Doc Access Anywhere</title>
+    <title>Doc Share</title>
     <style>
-        * { box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f9; }
-        .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        h2 { color: #333; margin-top: 0; }
-        .upload-box { background: #eef2f5; padding: 15px; border-radius: 8px; margin-bottom: 25px; }
-        input[type="file"] { width: 100%; margin-bottom: 10px; padding: 8px; background: white; border: 1px solid #ccc; border-radius: 4px; }
-        button { width: 100%; padding: 12px; background-color: #007bff; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
-        button:hover { background-color: #0056b3; }
-        .file-list { margin-top: 10px; }
-        .file-item { padding: 12px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; word-break: break-all; }
-        .file-item a { text-decoration: none; color: #007bff; font-weight: bold; background: #e3f2fd; padding: 6px 12px; border-radius: 4px; }
+        body { font-family: sans-serif; padding: 20px; max-width: 500px; margin: auto; }
+        .box { border: 1px solid #ccc; padding: 20px; border-radius: 8px; }
+        ul { list-style-type: none; padding: 0; }
+        li { margin: 8px 0; }
+        a { color: #007bff; text-decoration: none; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h2>डॉक्यूमेंट अपलोड करें</h2>
-        <div class="upload-box">
-            <form action="/upload" method="POST" enctype="multipart/form-data">
-    <input type="file" name="document" required>
-    <button type="submit">Upload Document</button>
-            </form>
-        </div>
+    <div class="box">
+        <h2>Document Share</h2>
+        <input type="file" id="fileInput">
+        <button onclick="uploadFile()">Upload</button>
+        <p id="status"></p>
 
-        <h2>Upload files </h2>
-        <div id="files" class="file-list">लोड हो रहा है...</div>
+        <h3>Uploaded Files:</h3>
+        <ul id="fileList"></ul>
     </div>
 
     <script>
         async function loadFiles() {
-            try {
-                const res = await fetch('/api/files');
-                const files = await res.json();
-                const container = document.getElementById('files');
-                container.innerHTML = '';
-                
-                if (files.length === 0) {
-                    container.innerHTML = '<p style="color:#777;">अभी तक कोई डॉक्यूमेंट अपलोड नहीं हुआ है।</p>';
-                    return;
-                }
+            const res = await fetch('/api/files');
+            const files = await res.json();
+            const ul = document.getElementById('fileList');
+            ul.innerHTML = files.map(f => `<li><a href="/uploads/${f}" target="_blank">${f}</a></li>`).join('');
+        }
 
-                files.forEach(file => {
-                    const item = document.createElement('div');
-                    item.className = 'file-item';
-                    item.innerHTML = `
-                        <span>${file}</span>
-                        <a href="/uploads/${file}" target="_blank">देखें (Open)</a>
-                    `;
-                    container.appendChild(item);
-                });
-            } catch (err) {
-                document.getElementById('files').innerHTML = '<p style="color:red;">फाइलें लोड करने में एरर आया।</p>';
+        async function uploadFile() {
+            const input = document.getElementById('fileInput');
+            const status = document.getElementById('status');
+            if (!input.files[0]) return alert('Pehle file select karein');
+
+            status.innerText = 'Uploading...';
+            const formData = new FormData();
+            formData.append('document', input.files[0]);
+
+            const res = await fetch('/upload', { method: 'POST', body: formData });
+            const data = await res.json();
+
+            if (data.success) {
+                status.innerText = 'Upload Successful!';
+                input.value = '';
+                loadFiles();
+            } else {
+                status.innerText = 'Upload failed: ' + (data.error || 'Unknown error');
             }
         }
+
         loadFiles();
     </script>
 </body>
