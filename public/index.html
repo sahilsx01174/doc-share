@@ -8,8 +8,9 @@
         body { font-family: sans-serif; padding: 20px; max-width: 500px; margin: auto; }
         .box { border: 1px solid #ccc; padding: 20px; border-radius: 8px; }
         ul { list-style-type: none; padding: 0; }
-        li { margin: 8px 0; }
-        a { color: #007bff; text-decoration: none; }
+        li { margin: 10px 0; display: flex; justify-content: space-between; align-items: center; }
+        a { color: #007bff; text-decoration: none; word-break: break-all; margin-right: 10px; }
+        .del-btn { background: #ff4d4d; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -28,7 +29,12 @@
             const res = await fetch('/api/files');
             const files = await res.json();
             const ul = document.getElementById('fileList');
-            ul.innerHTML = files.map(f => `<li><a href="/uploads/${f}" target="_blank">${f}</a></li>`).join('');
+            ul.innerHTML = files.map(f => `
+                <li>
+                    <a href="/uploads/${f}" target="_blank">${f}</a>
+                    <button class="del-btn" onclick="deleteFile('${f}')">Delete</button>
+                </li>
+            `).join('');
         }
 
         async function uploadFile() {
@@ -49,6 +55,18 @@
                 loadFiles();
             } else {
                 status.innerText = 'Upload failed: ' + (data.error || 'Unknown error');
+            }
+        }
+
+        async function deleteFile(filename) {
+            if (!confirm('Kya aap is file ko delete karna chahte hain?')) return;
+            
+            const res = await fetch(`/api/files/${filename}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.success) {
+                loadFiles();
+            } else {
+                alert('Delete karne me dikkat aayi');
             }
         }
 
