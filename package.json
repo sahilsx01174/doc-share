@@ -1,42 +1,12 @@
-const express = require('express');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// अपलोड फोल्डर बनाएं
-const uploadDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir);
+{
+  "name": "doc-share",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "express-fileupload": "^1.5.2"
+  }
 }
-
-// स्टोरेज कॉन्फ़िगरेशन
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => cb(null, 'uploads/'),
-    filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
-});
-
-const upload = multer({ storage });
-
-app.use(express.static('public'));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-// फ़ाइल अपलोड करने का API
-app.post('/upload', upload.single('document'), (req, res) => {
-    if (!req.file) return res.status(400).send('कोई फ़ाइल अपलोड नहीं हुई।');
-    res.redirect('/');
-});
-
-// अपलोड की गई फ़ाइलों की सूची प्राप्त करने का API
-app.get('/api/files', (req, res) => {
-    fs.readdir(uploadDir, (err, files) => {
-        if (err) return res.status(500).json([]);
-        res.json(files);
-    });
-});
-
-app.listen(PORT, () => {
-    console.log(`सर्वर चालू है: http://localhost:${PORT}`);
-});
