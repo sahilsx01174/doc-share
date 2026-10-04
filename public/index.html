@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Doc Share</title>
+    <title>Doc Share Lock</title>
     <style>
         body { font-family: sans-serif; padding: 20px; max-width: 500px; margin: auto; }
         .box { border: 1px solid #ccc; padding: 20px; border-radius: 8px; }
@@ -11,22 +11,70 @@
         li { margin: 10px 0; display: flex; justify-content: space-between; align-items: center; }
         a { color: #007bff; text-decoration: none; word-break: break-all; margin-right: 10px; }
         .del-btn { background: #ff4d4d; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+        .hidden { display: none; }
     </style>
 </head>
 <body>
     <div class="box">
         <h2>Document Share</h2>
-        <input type="file" id="fileInput">
-        <button onclick="uploadFile()">Upload</button>
-        <p id="status"></p>
+        
+        <!-- Password Screen -->
+        <div id="loginSection">
+            <p>फ़ाइलें देखने के लिए पासवर्ड डालें:</p>
+            <input type="password" id="passInput" placeholder="Enter Password">
+            <button onclick="login()">Login</button>
+            <p id="loginError" style="color:red;"></p>
+        </div>
 
-        <h3>Uploaded Files:</h3>
-        <ul id="fileList"></ul>
+        <!-- Dashboard Screen -->
+        <div id="appSection" class="hidden">
+            <input type="file" id="fileInput">
+            <button onclick="uploadFile()">Upload</button>
+            <button onclick="logout()" style="float: right;">Logout</button>
+            <p id="status"></p>
+
+            <h3>Uploaded Files:</h3>
+            <ul id="fileList"></ul>
+        </div>
     </div>
 
     <script>
+        let userPass = localStorage.getItem('appPass') || '';
+
+        async function login() {
+            const pass = document.getElementById('passInput').value;
+            const res = await fetch('/api/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: pass })
+            });
+
+            if (res.ok) {
+                userPass = pass;
+                localStorage.setItem('appPass', pass);
+                showApp();
+            } else {
+                document.getElementById('loginError').innerText = 'गलत पासवर्ड!';
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('appPass');
+            location.reload();
+        }
+
+        function showApp() {
+            document.getElementById('loginSection').classList.add('hidden');
+            document.getElementById('appSection').classList.remove('hidden');
+            loadFiles();
+        }
+
         async function loadFiles() {
-            const res = await fetch('/api/files');
+            const res = await fetch('/api/files', {
+                headers: { 'x-app-password': userPass }
+            });
+            if (!res.ok) return logout();
+            
             const files = await res.json();
             const ul = document.getElementById('fileList');
             ul.innerHTML = files.map(f => `
@@ -46,7 +94,11 @@
             const formData = new FormData();
             formData.append('document', input.files[0]);
 
-            const res = await fetch('/upload', { method: 'POST', body: formData });
+            const res = await fetch('/upload', {
+                method: 'POST',
+                headers: { 'x-app-password': userPass },
+                body: formData
+            });
             const data = await res.json();
 
             if (data.success) {
@@ -59,18 +111,23 @@
         }
 
         async function deleteFile(filename) {
-            if (!confirm('Kya aap is file ko delete karna chahte hain?')) return;
+            if (!confirm('Delete file')) return;
             
-            const res = await fetch(`/api/files/${filename}`, { method: 'DELETE' });
+            const res = await fetch(`/api/files/${filename}`, {
+                method: 'DELETE',
+                headers: { 'x-app-password': userPass }
+            });
             const data = await res.json();
             if (data.success) {
                 loadFiles();
             } else {
-                alert('Delete karne me dikkat aayi');
+                alert('Delete karne me दिक्कत aayi');
             }
         }
 
-        loadFiles();
+        if (userPass) {
+            showApp();
+        }
     </script>
 </body>
 </html>
