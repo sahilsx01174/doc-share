@@ -7,7 +7,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // 🔒 अपना पासवर्ड यहाँ सेट करें:
-const SECRET_PASSWORD = "1234"; 
+const SECRET_PASSWORD = "0908"; 
 
 const uploadDir = path.join('/tmp', 'uploads');
 if (!fs.existsSync(uploadDir)) {
@@ -39,7 +39,7 @@ app.post('/api/verify', (req, res) => {
     if (password === SECRET_PASSWORD) {
         res.json({ success: true });
     } else {
-        res.status(401).json({ success: false, error: 'गलत पासवर्ड' });
+        res.status(401).json({ success: false, error: 'Wrong Password' });
     }
 });
 
