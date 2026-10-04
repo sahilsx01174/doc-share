@@ -3,28 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure Doc Share</title>
+    <title>Doc Share Lock</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; max-width: 500px; margin: auto; background: #f9f9f9; }
-        .box { border: 1px solid #ddd; padding: 20px; border-radius: 8px; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        body { font-family: sans-serif; padding: 20px; max-width: 500px; margin: auto; }
+        .box { border: 1px solid #ccc; padding: 20px; border-radius: 8px; }
         ul { list-style-type: none; padding: 0; }
-        li { margin: 10px 0; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 5px; }
-        .del-btn { background: #ff4d4d; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; }
-        .down-btn { background: #007bff; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; text-decoration: none; margin-right: 5px; }
+        li { margin: 10px 0; display: flex; justify-content: space-between; align-items: center; }
+        a { color: #007bff; text-decoration: none; word-break: break-all; margin-right: 10px; }
+        .del-btn { background: #ff4d4d; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
         .hidden { display: none; }
     </style>
 </head>
 <body>
     <div class="box">
-        <h2>🔒 Secure Doc Share</h2>
+        <h2>Document Share</h2>
         
+        <!-- Password Screen -->
         <div id="loginSection">
-            <p>Access ke liye password dalein:</p>
+            <p>Please Enter Password:</p>
             <input type="password" id="passInput" placeholder="Enter Password">
             <button onclick="login()">Login</button>
             <p id="loginError" style="color:red;"></p>
         </div>
 
+        <!-- Dashboard Screen -->
         <div id="appSection" class="hidden">
             <input type="file" id="fileInput">
             <button onclick="uploadFile()">Upload</button>
@@ -47,13 +49,12 @@
                 body: JSON.stringify({ password: pass })
             });
 
-            const data = await res.json();
             if (res.ok) {
                 userPass = pass;
                 localStorage.setItem('appPass', pass);
                 showApp();
             } else {
-                document.getElementById('loginError').innerText = data.error || 'Galat Password!';
+                document.getElementById('loginError').innerText = 'गलत पासवर्ड!';
             }
         }
 
@@ -78,31 +79,10 @@
             const ul = document.getElementById('fileList');
             ul.innerHTML = files.map(f => `
                 <li>
-                    <span>${f}</span>
-                    <div>
-                        <button class="down-btn" onclick="downloadFile('${f}')">Download</button>
-                        <button class="del-btn" onclick="deleteFile('${f}')">Delete</button>
-                    </div>
+                    <a href="/uploads/${f}" target="_blank">${f}</a>
+                    <button class="del-btn" onclick="deleteFile('${f}')">Delete</button>
                 </li>
             `).join('');
-        }
-
-        async function downloadFile(filename) {
-            const res = await fetch(`/api/download/${filename}`, {
-                headers: { 'x-app-password': userPass }
-            });
-            if (res.ok) {
-                const blob = await res.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = filename;
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-            } else {
-                alert('Download nahi ho paya.');
-            }
         }
 
         async function uploadFile() {
@@ -121,7 +101,7 @@
             });
             const data = await res.json();
 
-            if (res.ok && data.success) {
+            if (data.success) {
                 status.innerText = 'Upload Successful!';
                 input.value = '';
                 loadFiles();
@@ -131,7 +111,7 @@
         }
 
         async function deleteFile(filename) {
-            if (!confirm('Kya aap is file ko delete karna chahte hain?')) return;
+            if (!confirm('deleteFile?')) return;
             
             const res = await fetch(`/api/files/${filename}`, {
                 method: 'DELETE',
@@ -141,7 +121,7 @@
             if (data.success) {
                 loadFiles();
             } else {
-                alert('Delete karne me dikkat aayi');
+                alert('Delete karne me दिक्कत aayi');
             }
         }
 
