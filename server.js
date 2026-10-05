@@ -1,145 +1,121 @@
 const express = require('express');
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 const fileUpload = require('express-fileupload');
+const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey123';
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/docshare';
 
-// Database Connection
-mongoose.connect(MONGO_URI)
-  .then(() => console.log('MongoDB Connected'))
-  .catch(err => console.log('DB Connection Error:', err));
+// 🔒 Railway Variables se Password lega (Fallback: '1234')
+const SECRET_PASSWORD = process.env.APP_PASSWORD || "1234";
 
-// Schemas
-const UserSchema = new mongoose.Schema({
-    username: { type: String, required: true, unique: true },
-    password: { type: String, required: true }
-});
-
-const FileSchema = new mongoose.Schema({
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    filename: { type: String, required: true },
-    originalName: { type: String, required: true },
-    uploadDate: { type: Date, default: Date.now }
-});
-
-const User = mongoose.model('User', UserSchema);
-const File = mongoose.model('File', FileSchema);
-
-// Upload Directory
 const uploadDir = path.join('/tmp', 'uploads');
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
 }
 
+// Security 1: Rate Limiter
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 100,
+    message: { error: 'Too many requests! Please try again in 15 minutes.' }
+});
+
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    message: { error: 'Too many incorrect passwords have been entered. Please try again in 15 minutes.' }
+});
+
 app.use(express.json());
+app.use(limiter);
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(fileUpload({ limits: { fileSize: 10 * 1024 * 1024 }, abortOnLimit: true }));
+
+// Security 2: Upload Limits
+app.use(fileUpload({
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB Limit
+    abortOnLimit: true,
+    createParentPath: true
+}));
 
 // Auth Middleware
-const authMiddleware = (req, res, next) => {
-    const token = req.headers['authorization'];
-    if (!token) return res.status(401).json({ error: 'Access denied. Please login.' });
-
-    try {
-        const verified = jwt.verify(token.replace('Bearer ', ''), JWT_SECRET);
-        req.user = verified;
+const checkAuth = (req, res, next) => {
+    const authHeader = req.headers['x-app-password'];
+    if (authHeader && authHeader === SECRET_PASSWORD) {
         next();
-    } catch (err) {
-        res.status(400).json({ error: 'Invalid token' });
+    } else {
+        res.status(401).json({ error: 'Unauthorized: Wrong Password!' });
     }
 };
 
-// 1. Sign Up API
-app.post('/api/signup', async (req, res) => {
-    try {
-        const { username, password } = req.body;
-        if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
-        const existingUser = await User.findOne({ username });
-        if (existingUser) return res.status(400).json({ error: 'Allready Username exist' });
-
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const user = new User({ username, password: hashedPassword });
-        await user.save();
-
-        res.json({ success: true, message: 'Account create successfull.' });
-    } catch (err) {
-        res.status(500).json({ error: 'Server error during signup' });
+// Verify Password
+app.post('/api/verify', loginLimiter, (req, res) => {
+    const { password } = req.body;
+    if (password === SECRET_PASSWORD) {
+        res.json({ success: true });
+    } else {
+        res.status(401).json({ success: false, error: 'Wrong Password!' });
     }
 });
 
-// 2. Login API
-app.post('/api/login', async (req, res) => {
-    try {
-        const { username, password } = req.body;
-        const user = await User.findOne({ username });
-        if (!user) return res.status(400).json({ error: 'Wrong username and password' });
-
-        const validPass = await bcrypt.compare(password, user.password);
-        if (!validPass) return res.status(400).json({ error: 'Wrong username and password' });
-
-        const token = jwt.sign({ _id: user._id, username: user.username }, JWT_SECRET);
-        res.json({ success: true, token, username: user.username });
-    } catch (err) {
-        res.status(500).json({ error: 'Server error during login' });
+// Upload File Route
+app.post('/upload', checkAuth, (req, res) => {
+    if (!req.files || !req.files.document) {
+        return res.status(400).json({ error: 'No selected any file' });
     }
-});
-
-// 3. User Upload File
-app.post('/upload', authMiddleware, async (req, res) => {
-    if (!req.files || !req.files.document) return res.status(400).json({ error: 'File nahi chuni gayi' });
 
     const sampleFile = req.files.document;
     const ext = path.extname(sampleFile.name).toLowerCase();
+
+    const allowedTypes = ['.png', '.jpg', '.jpeg', '.gif', '.pdf', '.txt', '.doc', '.docx', '.zip'];
+    if (!allowedTypes.includes(ext)) {
+        return res.status(400).json({ error: 'Ye file type allowed nahi hai!' });
+    }
+
     const safeName = Date.now() + '-' + crypto.randomBytes(4).toString('hex') + ext;
     const savePath = path.join(uploadDir, safeName);
 
-    sampleFile.mv(savePath, async (err) => {
+    sampleFile.mv(savePath, (err) => {
         if (err) return res.status(500).json({ error: err.message });
-
-        const newFile = new File({
-            userId: req.user._id,
-            filename: safeName,
-            originalName: sampleFile.name
-        });
-        await newFile.save();
-
-        res.json({ success: true });
+        res.json({ success: true, fileName: safeName });
     });
 });
 
-// 4. Get User Specific Files
-app.get('/api/files', authMiddleware, async (req, res) => {
-    const files = await File.find({ userId: req.user._id }).sort({ uploadDate: -1 });
-    res.json(files);
+// File List Route
+app.get('/api/files', checkAuth, (req, res) => {
+    fs.readdir(uploadDir, (err, files) => {
+        if (err) return res.json([]);
+        res.json(files);
+    });
 });
 
-// 5. Download User File
-app.get('/api/download/:id', authMiddleware, async (req, res) => {
-    const fileDoc = await File.findOne({ _id: req.params.id, userId: req.user._id });
-    if (!fileDoc) return res.status(404).json({ error: 'File nahi mili' });
+// File Download Route
+app.get('/api/download/:filename', checkAuth, (req, res) => {
+    const safeFilename = path.basename(req.params.filename);
+    const filePath = path.join(uploadDir, safeFilename);
 
-    const filePath = path.join(uploadDir, fileDoc.filename);
-    res.download(filePath, fileDoc.originalName);
+    if (fs.existsSync(filePath)) {
+        res.download(filePath);
+    } else {
+        res.status(404).json({ error: 'File can Not find' });
+    }
 });
 
-// 6. Delete User File
-app.delete('/api/files/:id', authMiddleware, async (req, res) => {
-    const fileDoc = await File.findOneAndDelete({ _id: req.params.id, userId: req.user._id });
-    if (!fileDoc) return res.status(404).json({ error: 'File delete nahi ho sakti' });
+// File Delete Route
+app.delete('/api/files/:filename', checkAuth, (req, res) => {
+    const safeFilename = path.basename(req.params.filename);
+    const filePath = path.join(uploadDir, safeFilename);
 
-    const filePath = path.join(uploadDir, fileDoc.filename);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-
-    res.json({ success: true });
+    fs.unlink(filePath, (err) => {
+        if (err) return res.status(500).json({ error: 'File Not delete' });
+        res.json({ success: true });
+    });
 });
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
