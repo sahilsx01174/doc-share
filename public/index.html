@@ -17,7 +17,7 @@
 </head>
 <body>
     <div class="box">
-        <h2>🔒 Private Doc Vault</h2>
+        <h2>🔒 Private Document share </h2>
 
         <!-- Auth Forms -->
         <div id="authSection">
@@ -54,8 +54,8 @@
             document.getElementById('formTitle').innerText = isSignUp ? 'Create Account' : 'Sign In';
             document.getElementById('authBtn').innerText = isSignUp ? 'Sign Up' : 'Login';
             document.getElementById('toggleMsg').innerHTML = isSignUp 
-                ? 'Pehle se account hai? <a href="#" onclick="toggleAuthMode()">Login karein</a>' 
-                : 'Account nahi hai? <a href="#" onclick="toggleAuthMode()">Sign Up karein</a>';
+                ? 'Allready Account Click ? <a href="#" onclick="toggleAuthMode()">Login</a>' 
+                : 'signup? <a href="#" onclick="toggleAuthMode()">Sign Up</a>';
         }
 
         async function handleAuth() {
@@ -72,7 +72,7 @@
             const data = await res.json();
             if (res.ok) {
                 if (isSignUp) {
-                    alert('Signup Successful! Ab Login Karein.');
+                    alert('Signup Successful!.');
                     toggleAuthMode();
                 } else {
                     token = data.token;

@@ -64,13 +64,13 @@ app.post('/api/signup', async (req, res) => {
         if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
 
         const existingUser = await User.findOne({ username });
-        if (existingUser) return res.status(400).json({ error: 'Username pehle se exist karta hai' });
+        if (existingUser) return res.status(400).json({ error: 'Allready Username exist' });
 
         const hashedPassword = await bcrypt.hash(password, 10);
         const user = new User({ username, password: hashedPassword });
         await user.save();
 
-        res.json({ success: true, message: 'Account ban gaya! Ab login karein.' });
+        res.json({ success: true, message: 'Account create successfull.' });
     } catch (err) {
         res.status(500).json({ error: 'Server error during signup' });
     }
@@ -81,10 +81,10 @@ app.post('/api/login', async (req, res) => {
     try {
         const { username, password } = req.body;
         const user = await User.findOne({ username });
-        if (!user) return res.status(400).json({ error: 'Galat username ya password' });
+        if (!user) return res.status(400).json({ error: 'Wrong username and password' });
 
         const validPass = await bcrypt.compare(password, user.password);
-        if (!validPass) return res.status(400).json({ error: 'Galat username ya password' });
+        if (!validPass) return res.status(400).json({ error: 'Wrong username and password' });
 
         const token = jwt.sign({ _id: user._id, username: user.username }, JWT_SECRET);
         res.json({ success: true, token, username: user.username });
