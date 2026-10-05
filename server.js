@@ -1,14 +1,39 @@
 const express = require('express');
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const fileUpload = require('express-fileupload');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey123';
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/docshare';
 
-// 🔒 अपना पासवर्ड यहाँ सेट करें:
-const SECRET_PASSWORD = "0908"; 
+// Database Connection
+mongoose.connect(MONGO_URI)
+  .then(() => console.log('MongoDB Connected'))
+  .catch(err => console.log('DB Connection Error:', err));
 
+// Schemas
+const UserSchema = new mongoose.Schema({
+    username: { type: String, required: true, unique: true },
+    password: { type: String, required: true }
+});
+
+const FileSchema = new mongoose.Schema({
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    filename: { type: String, required: true },
+    originalName: { type: String, required: true },
+    uploadDate: { type: Date, default: Date.now }
+});
+
+const User = mongoose.model('User', UserSchema);
+const File = mongoose.model('File', FileSchema);
+
+// Upload Directory
 const uploadDir = path.join('/tmp', 'uploads');
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
@@ -16,64 +41,105 @@ if (!fs.existsSync(uploadDir)) {
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
-app.use('/uploads', express.static(uploadDir));
-app.use(fileUpload({ createParentPath: true }));
+app.use(fileUpload({ limits: { fileSize: 10 * 1024 * 1024 }, abortOnLimit: true }));
 
-// Password Check Middleware
-const checkAuth = (req, res, next) => {
-    const authHeader = req.headers['x-app-password'];
-    if (authHeader === SECRET_PASSWORD) {
+// Auth Middleware
+const authMiddleware = (req, res, next) => {
+    const token = req.headers['authorization'];
+    if (!token) return res.status(401).json({ error: 'Access denied. Please login.' });
+
+    try {
+        const verified = jwt.verify(token.replace('Bearer ', ''), JWT_SECRET);
+        req.user = verified;
         next();
-    } else {
-        res.status(401).json({ error: 'गलत पासवर्ड!' });
+    } catch (err) {
+        res.status(400).json({ error: 'Invalid token' });
     }
 };
 
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+// 1. Sign Up API
+app.post('/api/signup', async (req, res) => {
+    try {
+        const { username, password } = req.body;
+        if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
 
-// Verify Password API
-app.post('/api/verify', (req, res) => {
-    const { password } = req.body;
-    if (password === SECRET_PASSWORD) {
-        res.json({ success: true });
-    } else {
-        res.status(401).json({ success: false, error: 'Wrong Password' });
+        const existingUser = await User.findOne({ username });
+        if (existingUser) return res.status(400).json({ error: 'Username pehle se exist karta hai' });
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const user = new User({ username, password: hashedPassword });
+        await user.save();
+
+        res.json({ success: true, message: 'Account ban gaya! Ab login karein.' });
+    } catch (err) {
+        res.status(500).json({ error: 'Server error during signup' });
     }
 });
 
-// Protected File Upload
-app.post('/upload', checkAuth, (req, res) => {
-    if (!req.files || !req.files.document) {
-        return res.status(400).json({ error: 'Koi file nahi chuni gayi' });
+// 2. Login API
+app.post('/api/login', async (req, res) => {
+    try {
+        const { username, password } = req.body;
+        const user = await User.findOne({ username });
+        if (!user) return res.status(400).json({ error: 'Galat username ya password' });
+
+        const validPass = await bcrypt.compare(password, user.password);
+        if (!validPass) return res.status(400).json({ error: 'Galat username ya password' });
+
+        const token = jwt.sign({ _id: user._id, username: user.username }, JWT_SECRET);
+        res.json({ success: true, token, username: user.username });
+    } catch (err) {
+        res.status(500).json({ error: 'Server error during login' });
     }
+});
+
+// 3. User Upload File
+app.post('/upload', authMiddleware, async (req, res) => {
+    if (!req.files || !req.files.document) return res.status(400).json({ error: 'File nahi chuni gayi' });
 
     const sampleFile = req.files.document;
-    const fileName = Date.now() + '-' + sampleFile.name;
-    const savePath = path.join(uploadDir, fileName);
+    const ext = path.extname(sampleFile.name).toLowerCase();
+    const safeName = Date.now() + '-' + crypto.randomBytes(4).toString('hex') + ext;
+    const savePath = path.join(uploadDir, safeName);
 
-    sampleFile.mv(savePath, (err) => {
+    sampleFile.mv(savePath, async (err) => {
         if (err) return res.status(500).json({ error: err.message });
-        res.json({ success: true, fileName });
-    });
-});
 
-// Protected File List
-app.get('/api/files', checkAuth, (req, res) => {
-    fs.readdir(uploadDir, (err, files) => {
-        if (err) return res.json([]);
-        res.json(files);
-    });
-});
+        const newFile = new File({
+            userId: req.user._id,
+            filename: safeName,
+            originalName: sampleFile.name
+        });
+        await newFile.save();
 
-// Protected File Delete
-app.delete('/api/files/:filename', checkAuth, (req, res) => {
-    const filePath = path.join(uploadDir, req.params.filename);
-    fs.unlink(filePath, (err) => {
-        if (err) return res.status(500).json({ error: 'File delete nahi ho payi' });
         res.json({ success: true });
     });
 });
 
-app.listen(PORT, () => console.log(`Server live on ${PORT}`));
+// 4. Get User Specific Files
+app.get('/api/files', authMiddleware, async (req, res) => {
+    const files = await File.find({ userId: req.user._id }).sort({ uploadDate: -1 });
+    res.json(files);
+});
+
+// 5. Download User File
+app.get('/api/download/:id', authMiddleware, async (req, res) => {
+    const fileDoc = await File.findOne({ _id: req.params.id, userId: req.user._id });
+    if (!fileDoc) return res.status(404).json({ error: 'File nahi mili' });
+
+    const filePath = path.join(uploadDir, fileDoc.filename);
+    res.download(filePath, fileDoc.originalName);
+});
+
+// 6. Delete User File
+app.delete('/api/files/:id', authMiddleware, async (req, res) => {
+    const fileDoc = await File.findOneAndDelete({ _id: req.params.id, userId: req.user._id });
+    if (!fileDoc) return res.status(404).json({ error: 'File delete nahi ho sakti' });
+
+    const filePath = path.join(uploadDir, fileDoc.filename);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+
+    res.json({ success: true });
+});
+
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
