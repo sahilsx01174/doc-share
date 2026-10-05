@@ -9,7 +9,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Password configuration from environment or fallback
-const SECRET_PASSWORD = process.env.APP_PASSWORD || "1234";
+const SECRET_PASSWORD = process.env.APP_PASSWORD || "0908";
 
 const uploadDir = path.join('/tmp', 'uploads');
 if (!fs.existsSync(uploadDir)) {
